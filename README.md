@@ -1,7 +1,5 @@
-# MF-Stocks
-Code for moral foundations and stocks project
-
-The goal of this project is to explore the short-term effects of moral language in news framing through an examination of activity in the financial market. 
+# Project for
+The goal of this project is to predict short-term stock market movement from the prevalence of moral language use in online news using 15-min interval data points across an 8-month period. 
 
 ## Theoretical Background
 The Model of Intuitive Morality and Exemplars (MIME) suggest that news audiences, including investors, evaluate news based on their moral frames, and that these moral evaluations shape their ensuing behavior. According to MIME, our media environment plays a role in both shaping and being shaped by our moral intuitions. Content features in a media message can influence both the short and long-term salience of an individual’s moral intuitions. Content features include representations of behaviors in the media that either uphold or violate one or more of the five moral subdimensions (i.e., care/harm, fairness/cheating, loyalty/betrayal, authority/subversion, and sanctity/degradation). These are known as exemplars, or morally-framed behaviors in media representations that are reflective of specific moral domains. As moral exemplars draw our attention towards certain moral subdimensions, these subdimensions become more salient in both strength and valence within our moral intuitions.
