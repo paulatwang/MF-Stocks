@@ -1,0 +1,383 @@
+---
+title: "mfStocks60_60shift"
+
+---
+
+```{r Setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      collapse = FALSE,
+                      warning = FALSE, 
+                      tidy = TRUE)
+options(width=120)
+```
+
+# Read Data
+
+```{r Data, include=FALSE}
+setwd("/home/pw/Projects/mfstocks/data/csv/60shift")
+stocks60 <- read.table("data60_60shift.csv", header=TRUE, stringsAsFactors=TRUE, sep=",", na.strings="NA", dec=".", strip.white=TRUE)  # READ DATA
+stocks60$dt_hourly <- as.POSIXct(stocks60$dt_hourly, tz="EST") # CONVERT DT TO POSIX
+col60 <- c("season_workday_hourly", "season_month_hourly","tf1_hourly", "tf2_hourly", "tf3_hourly", "tf4_hourly", "tf5_hourly", "tf6_hourly") 
+stocks60[col60] <- lapply(stocks60[col60], as.factor) # CONVERT CAT VARs TO FACTORs
+```
+
+# Preprocessing
+
+Load packages
+```{r Load packages}
+library(RcmdrMisc)
+library(dplyr) # %>% function
+library(reshape2) # melt() 
+library(lubridate) # date()
+```
+
+Take the difference of the stock closing values to see the changes in stock market movement. The variance is quite unstable so we then log the difference to try to stabilize it.  
+```{r Make stationary}
+stocks60$stocks_hourly_diff = stocks60$stocks_hourly %>% diff() %>% append(NA, 0) # Difference for moving averages
+stocks60$stocks_hourly_diff_ln = stocks60$stocks_hourly %>% log() %>% diff() %>% append(NA, 0) # Log then difference for variance stabilization
+stocks60$day_count = stocks60$dt_hourly %>% date() %>% as.integer() - stocks60$dt_hourly %>% date() %>% as.integer() %>% min() + 1 # Counting the days
+```
+
+Create a morality index, using the sum of the sentiment-weighted probabilities of each of the foundations. 
+```{r Create morality predictor}
+stocks60$morality = 
+  stocks60$care_p_hourly*stocks60$care_sent_hourly + 
+  stocks60$fairness_p_hourly*stocks60$fairness_sent_hourly +
+  stocks60$loyalty_p_hourly*stocks60$loyalty_sent_hourly +
+  stocks60$authority_p_hourly*stocks60$authority_sent_hourly +
+  stocks60$sanctity_p_hourly*stocks60$sanctity_sent_hourly
+```
+
+Next, add lags and leads to all the predictors, including the morality index (1), all moral probabilities for each foundation (5), all moral sentiments for each foundation (5), and all sentiment-weighted probabilities for each foundation (5). We started with 25 variables in the stocks data frame. We should end up with 57 variables. 
+
+
+
+```{r Lag predictors}
+# morality
+stocks60$morality_lag = lag(stocks60$morality)
+stocks60$morality_lead = lead(stocks60$morality)
+
+foundations <- c("care","fairness","loyalty","authority","sanctity")
+
+# foundation probabilities 
+stocks60[paste(foundations, "_p_hourly_lag", sep="")] <-  lag(stocks60[6:10]) # lag probabilities
+stocks60[paste(foundations, "_p_hourly_lead", sep="")] <-  lead(stocks60[6:10]) # lead probabilities
+
+# foundation sentiments
+stocks60[paste(foundations, "_sent_hourly_lag", sep="")] <-  lag(stocks60[11:15]) # lag sentiments
+stocks60[paste(foundations, "_sent_hourly_lead", sep="")] <-  lead(stocks60[11:15]) # lead sentiments
+
+# foundation probabilities*sentiments
+stocks60[foundations] <- stocks60[6:10]*stocks60[11:15]
+stocks60[paste(foundations, "_lag", sep="")] <-  lag(stocks60[6:10])*lag(stocks60[11:15]) # lag probabilities*sentiments
+stocks60[paste(foundations, "_lead", sep="")] <-  lead(stocks60[6:10])*lead(stocks60[11:15]) # lead probabilities*sentiments
+```
+
+Make time series and plot. We can see that the log minimized the variance somewhat, but it is still somewhat non-stationary. Perhaps future analyses can use a GARCH model to further process the data, but for the sake of our analysis, it is ok. 
+```{r Make time series}
+stocks60ts = ts(stocks60) # MAKE TIME SERIES
+plot(stocks60ts[,"stocks_hourly"]) # PLOT INITIAL DATA
+plot(stocks60ts[,"stocks_hourly_diff"]) # PLOT DIFFERENCED DATA
+plot(stocks60ts[,"stocks_hourly_diff_ln"]) # PLOT LOG DATA
+```
+
+Plot ACF and PACF
+```{r Serial Dependencies; ACF & PACF}
+plot(stocks60ts[,"stocks_hourly"]) # PLOT INITIAL DATA
+
+acf(stocks60$stocks_hourly, lag.max = NULL, type = c("correlation"), plot = TRUE, na.action = na.pass) # ACF FOR NON-TRANSFORMED DATA
+acf(stocks60$stocks_hourly, lag.max = NULL, type = c("partial"), plot = TRUE, na.action = na.pass) # PACF FOR NON-TRANSFORMED DATA
+
+acf(stocks60$stocks_hourly_diff_ln, lag.max = NULL, type = c("correlation"), plot = TRUE, na.action = na.pass) # ACF FOR TRANSFORMED DATA
+acf(stocks60$stocks_hourly_diff_ln, lag.max = NULL, type = c("partial"), plot = TRUE, na.action = na.pass) # PACF FOR TRANSFORMED DATA
+
+plot(stocks60ts[,"stocks_hourly_diff_ln"]) # UNSTABLE VARIANCE IN CONTRACTION AND RECOVERY PERIOD - NEED GARCH MODEL
+```
+
+
+# Data Exploration
+
+Load packages
+```{r Load packages}
+library(ggplot2) # plotting
+library(gridExtra) #gridExtra
+library(ggpubr)
+theme_set(theme_pubclean())
+```
+
+```{r}
+stocks60 %>% colnames()
+```
+
+View spread for all predictor variables and the single outcome variable.
+```{r Histograms}
+# Morality 
+hist(stocks60[25:27])
+
+# Foundation probabilities and sentiments
+hist(stocks60[6:15])
+hist(stocks60[, c(28:32, 38:42)]) # lags
+hist(stocks60[, c(33:37, 43:47)]) # leads
+
+# Foundation probabilities*sentiments
+hist(stocks60[48:52]) 
+hist(stocks60[53:57]) # lags
+hist(stocks60[58:62]) # leads
+```
+```{r}
+stocks60 %>% colnames()
+```
+
+
+```{r}
+# Morality
+ggplot(stocks60 %>% na.omit(), aes(x = tf2_hourly, y = morality_lag)) +   
+  geom_violin(trim = FALSE, fill = "lightblue", color = "lightblue") +
+  geom_boxplot(notch = TRUE, fill = "white", color =c("#00AFBB","#E7B800")) +
+  stat_summary(fun = mean, geom = "point",shape = 18, size = 2.5, color = "#FC4E07") + # identify mean
+  labs(x="Economic Period", y = "Morality Score") + 
+  scale_x_discrete(labels=c("High","Low"))
+
+# Foundations
+  stocks60_foundations_long = melt(stocks60[, c(17,48:52)], id.vars=c("tf2_hourly")) 
+
+ggplot(stocks60_foundations_long%>% na.omit(), aes(x = variable, y = value))  +
+  geom_violin(trim = FALSE, position = position_dodge(0.9), fill = "lightblue", color = "lightblue") +   
+  stat_summary(fun = mean, geom = "point",shape = 18, size = 2.5, color = "#FC4E07") + # identify mean
+  geom_boxplot(aes(color = tf2_hourly), width = 0.60, position = position_dodge(0.9)) + 
+  scale_color_manual(labels = c("High", "Low"), values = c("#00AFBB","#E7B800")) + 
+  scale_x_discrete(labels=c("Care","Fairness","Loyalty","Authority", "Sanctity")) +
+  theme(legend.position="right") + 
+  labs(x="Moral Foundations", y = "Foundation Score",colour="Economic Period")
+         
+```
+
+
+Generate functions for scatterplot, x density, and y density functions.
+```{r Plot Functions}
+
+# SCATTERPLOT
+plot_scatter <- function(input, x_label) {
+  return(ggplot(stocks60, aes(input, stocks_hourly_diff_ln, color=tf2_hourly)) + 
+           geom_point() + 
+           geom_smooth(method=lm) +
+           scale_color_manual(labels = c("High", "Low"), values = c('#00AFBB','#E7B800')) + 
+           theme(legend.position=c(0,1), legend.justification=c(0,1)) + 
+    labs(x=x_label, y = "Market Movement", color = "Economic Period")
+         )}
+
+# X DENSITY
+plot_xdensity <- function(input) {
+  return(ggplot(stocks60, aes(input, fill=tf2_hourly)) +
+           geom_density(alpha=.5) +
+           scale_fill_manual(values = c('#00AFBB','#E7B800')) + 
+           theme(legend.position = "none")  + 
+    labs(x = "") )}
+
+# Y DENSITY
+plot_ydensity <- function() {
+  return(ggplot(stocks60, aes(stocks_hourly_diff_ln, fill=tf2_hourly)) +
+           geom_density(alpha=.5) +
+           scale_fill_manual(values = c('#00AFBB','#E7B800')) +
+           theme(legend.position = "none")  + 
+    labs(x = "") )}
+```
+
+Create scatterplots for morality and all foundations
+```{r Scatterplots}
+scatterPlot <- plot_scatter(stocks60$morality_lag, "Morality")
+scatterPlot2 <- scatterPlot + theme(legend.position = "none")
+xdensity <- plot_xdensity(stocks60$morality_lag)
+ydensity <- plot_ydensity() + coord_flip()
+legend <- get_legend(scatterPlot)
+grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # MORALITY PLOT
+
+scatterPlot <- plot_scatter(stocks60$care_lag, "Care")
+scatterPlot2 <- scatterPlot + theme(legend.position = "none")
+xdensity <- plot_xdensity(stocks60$care_lag)
+ydensity <- plot_ydensity() + coord_flip()
+legend <- get_legend(scatterPlot)
+grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # CARE PLOT
+
+scatterPlot <- plot_scatter(stocks60$fairness_lag, "Fairness")
+scatterPlot2 <- scatterPlot + theme(legend.position = "none")
+xdensity <- plot_xdensity(stocks60$fairness_lag)
+ydensity <- plot_ydensity() + coord_flip()
+legend <- get_legend(scatterPlot)
+grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # FAIRNESS PLOT
+
+scatterPlot <- plot_scatter(stocks60$loyalty_lag, "Loyalty")
+scatterPlot2 <- scatterPlot + theme(legend.position = "none")
+xdensity <- plot_xdensity(stocks60$loyalty_lag)
+ydensity <- plot_ydensity() + coord_flip()
+legend <- get_legend(scatterPlot)
+grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # LOYALTY PLOT
+
+scatterPlot <- plot_scatter(stocks60$authority_lag, "Authority")
+scatterPlot2 <- scatterPlot + theme(legend.position = "none")
+xdensity <- plot_xdensity(stocks60$authority_lag)
+ydensity <- plot_ydensity() + coord_flip()
+legend <- get_legend(scatterPlot)
+grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # AUTHORITY PLOT
+
+scatterPlot <- plot_scatter(stocks60$sanctity_lag, "Sanctity")
+scatterPlot2 <- scatterPlot + theme(legend.position = "none")
+xdensity <- plot_xdensity(stocks60$sanctity_lag)
+ydensity <- plot_ydensity() + coord_flip()
+legend <- get_legend(scatterPlot)
+grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # SANCTITY PLOT           
+```
+
+
+
+# Removing Outliers
+
+Values above Q3 + 1.5xIQR or below Q1 - 1.5xIQR are considered as outliers. Values above Q3 + 3xIQR or below Q1 - 3xIQR are considered as extreme points (or extreme outliers). 
+```{r}
+library(rstatix)
+outliers <- stocks60 %>% 
+  identify_outliers(c(morality))
+print(paste("Number of outliers: ", nrow(outliers)))
+```
+
+```{r}
+stocks60_outrm <-  stocks60 %>% dplyr::filter(!(morality %in% outliers$morality))
+print(paste("Before outlier removal: ", nrow(stocks60))) 
+print(paste("After outlier removal: ", nrow(stocks60_outrm))) 
+print(paste("Difference: ", nrow(stocks60) - nrow(stocks60_outrm)))
+```
+
+# Fitting and Evaluating Models
+```{r}
+library(jtools) # summ()
+library(lme4) # lme models
+library(interactions)
+```
+
+Generate models
+
+```{r}
+stocks60_outrm <- stocks60_outrm %>% na.omit()
+```
+
+Regular predictors
+```{r}
+# linear regression
+model.lm <- lm(stocks_hourly_diff_ln ~ tf2_hourly * morality, data = stocks60_outrm) 
+model.lm.foundations <- lm(stocks_hourly_diff_ln ~ tf2_hourly * (care +fairness +loyalty +authority +sanctity), data = stocks60_outrm)
+
+# Random intercept with fixed mean (Null)
+model.lme.null <-lmer(stocks_hourly_diff_ln ~ 
+                        1 + (1|day_count), 
+                      data = stocks60_outrm, REML=TRUE) 
+
+# Correlated random intercept and slope
+model.lme <- lmer(stocks_hourly_diff_ln ~ 
+                    (1 + season_intraday_hourly + tf2_hourly*morality + (1 + season_intraday_hourly | day_count)), 
+                  data = stocks60_outrm, REML = TRUE)
+
+# Correlated random intercept and slope
+model.lme.foundations <- lmer(stocks_hourly_diff_ln ~  
+                                (1 + season_intraday_hourly + tf2_hourly*(care + fairness + loyalty + authority + sanctity) + ( 1 + season_intraday_hourly | day_count)), 
+                              data = stocks60_outrm, REML = TRUE)
+```
+
+Lagged predictors
+```{r}
+# # Lag
+ model.lm <- lm(stocks_hourly_diff_ln ~ tf2_hourly * morality_lag,data = stocks60_outrm)
+ model.lm.foundations <- lm(stocks_hourly_diff_ln ~ tf2_hourly * (care_lag +fairness_lag +loyalty_lag +authority_lag +sanctity_lag), data = stocks60_outrm)
+ model.lme.null <-lmer(stocks_hourly_diff_ln ~ 1 + (1|day_count), data = stocks60_outrm, REML=TRUE)
+ model.lme <- lmer(stocks_hourly_diff_ln ~ (1 + season_intraday_hourly + tf2_hourly*morality_lag + (1 + season_intraday_hourly | day_count)), data = stocks60_outrm, REML = TRUE)
+
+  model.lme.foundations <- lmer(stocks_hourly_diff_ln ~  (1 + season_intraday_hourly + tf2_hourly*(care_lag + fairness_lag + loyalty_lag + authority_lag + sanctity_lag) + ( 1 + season_intraday_hourly | day_count)), data = stocks60_outrm, REML = TRUE)
+```
+
+Leading predictors
+```{r}
+# # Lead
+model.lm <- lm(stocks_hourly_diff_ln ~ tf2_hourly * morality_lead,data = stocks60_outrm)
+model.lm.foundations <- lm(stocks_hourly_diff_ln ~ tf2_hourly * (care_lead +fairness_lead +loyalty_lead +authority_lead +sanctity_lead), data = stocks60_outrm)
+model.lme.null <-lmer(stocks_hourly_diff_ln ~ 1 + (1|day_count), data = stocks60_outrm, REML=TRUE)
+model.lme.lead <- lmer(stocks_hourly_diff_ln ~ (1 + season_intraday_hourly + tf2_hourly*morality_lead + (1 + season_intraday_hourly | day_count)), data = stocks60_outrm, REML = TRUE)
+model.lme.foundations <- lmer(stocks_hourly_diff_ln ~  (1 + season_intraday_hourly + tf2_hourly*(care_lead + fairness_lead + loyalty_lead + authority_lead + sanctity_lead) + ( 1 + season_intraday_hourly | day_count)), data = stocks60_outrm, REML = TRUE)
+```
+
+
+```{r Model Comparisons between morality and foundations models between linear and mixed effects}
+Anova(model.lm, type="III", test="F")
+Anova(model.lm.foundations, type="III", test="F")
+Anova(model.lme.null, type="III", test="F")
+Anova(model.lme, type="III", test="F")
+Anova(model.lme.foundations, type="III", test="F")
+```
+
+```{r}
+anova(model.lm, model.lm.foundations)
+anova(model.lme.null, model.lme, model.lme.foundations)
+```
+
+```{r Model Comparisons between linear and mixed-effects}
+anova(model.lme, model.lm, type="Chisq")
+anova(model.lme.foundations, model.lm.foundations, type="Chisq")
+```
+
+```{r Standardized Coefficients after Outlier Removal}
+summ(model.lme, scale=TRUE, transform.response=TRUE, confint=TRUE, digits=3)
+```
+
+
+```{r Foundations after Outlier Removal}
+summ(model.lme.foundations, scale=TRUE, transform.response=TRUE, confint=TRUE, digits=3)
+```
+```{r}
+test <-stocks60_outrm %>% group_by(day_count)
+```
+
+```{r}
+plot1 <- interact_plot(model.lme, 
+                       pred = morality_lag, 
+                       modx = tf2_hourly, 
+                       plot.points = TRUE, 
+                       linearity.check = FALSE,
+                       x.label = "Morality",
+                       y.label = "Difference in Market Movement",
+                       modx.labels = c("High","Low"),
+                       legend.main = "Economic Period") + 
+  ylim(-0.04,0.04)
+plot1a <- plot1 + theme(legend.position = "none")
+
+plot2 <- interact_plot(model.lme.foundations, 
+                       pred = fairness_lag, 
+                       modx = tf2_hourly, 
+                       plot.points = TRUE, 
+                       linearity.check = FALSE,
+                       x.label = "Fairness",
+                       y.label = "Difference in Market Movement") +
+  ylim(-0.04,0.04) +
+  xlim(-0.008,-0.002) +
+  theme(legend.position = "none", axis.title.y = element_blank())
+
+plot3 <- interact_plot(model.lme.foundations, 
+                       pred = sanctity_lag, 
+                       modx = tf2_hourly, 
+                       plot.points = TRUE, 
+                       linearity.check = FALSE,
+                       x.label = "Sanctity",
+                       y.label = "Difference in Market Movement") +
+  ylim(-0.04,0.04) +
+  xlim(-0.008,-0.002) +
+  theme(legend.position = "none", axis.title.y = element_blank())
+
+legend <- get_legend(plot1)
+grid.arrange(plot1)
+grid.arrange(plot2, plot3, legend, ncol=3, widths=c(5,5,3))
+```
+
+
+
+
+
+
+
+
