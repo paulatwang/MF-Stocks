@@ -25,9 +25,9 @@ For the predictive model, a cross-correlation function using lags -5 to 5 for al
 ## Conclusions
 - Morality (and its subdimensions) was found to be a significant predictor only when the stock market was in a recession, highlighting the increased influence of news on public opinion during periods of socio-economic fragility
 - Stock market movement is driven by only two of the five existing moral subdimensions: 
--   Violation of authority (i.e., subversion)
+1.  Violation of authority (i.e., subversion)
 > Possible explanation: As the reliance on traditional institutional structure decreases (i.e., subversion increases), there is greater uncertainty surrounding the immediate socio-economic landscape, leading to a short-term liquidation of assets and subsequent drop in market value.
--   Upholding of sanctity
+2.  Upholding of sanctity
 > Possible explanation: A response to serendipitous economic growth during a recession and hopefulness towards economic stability and virus eradication.
 
 Overall our findings show support for the short-term predictions of the MIME, which describe the cause-and-effect processes between moral intuition and news evaluation. According to the MIME, exposure to highly moral/immoral exemplars within specific moral domains will heighten audience sensitivity to these domains, causing them to seek out and react more strongly to media that further exemplify these domains
