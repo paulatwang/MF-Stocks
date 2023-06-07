@@ -1,4 +1,4 @@
-# Project for
+# Project Goals
 The goal of this project is to predict short-term stock market movement from the prevalence of moral language use in online news using 15-min interval data points across an 8-month period. 
 
 ## Theoretical Background
