@@ -1,16 +1,4 @@
----
-title: "R Notebook"
-output: html_notebook
----
-
-
-```{r}
 #install.packages("NCmisc")
 library(NCmisc)
-```
-
-```{r}
 list.functions.in.file("~/Projects/mfstocks/rmd/stocks60_analysis.R", alphabetic = TRUE)
-```
-
 
