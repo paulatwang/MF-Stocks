@@ -1,41 +1,20 @@
----
-title: "MFStocks Data Exploration"
----
-
-```{r, setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, collapse = FALSE, warning = FALSE, tidy = TRUE)
 options(width=120)
-```
 
-
-# Read Data
-
-```{r}
 setwd("~/Projects/mfstocks/rmd/60min") # data path
 stocks60 <- read.table("processed_data/stocks60.csv", header=TRUE, stringsAsFactors=TRUE, sep=",", na.strings="NA", dec=".", strip.white=TRUE)
 stocks60$dt_60 <- as.POSIXct(stocks60$dt_60, tz="EST") # CONVERT DT TO POSIX
 col60 <- c("season_workday_60", "season_month_60", "tf2_60") 
 stocks60[col60] <- lapply(stocks60[col60], as.factor) # CONVERT CAT VARs TO FACTORs
-```
 
-
-# Data Exploration
-
-Load packages
-```{r Load packages}
 library(ggplot2) # plotting
 library(gridExtra) #gridExtra
 library(ggpubr)
 theme_set(theme_pubclean())
-```
 
-```{r}
 stocks60 %>% colnames()
 
-```
 
-View spread for all predictor variables and the single outcome variable.
-```{r Histograms}
 # Stocks
 hist(stocks60[,c(6, 19, 20)])
 
@@ -46,15 +25,9 @@ hist(stocks60[, c(18, 33, 34)])
 hist(stocks60[28:32]) 
 hist(stocks60[35:39]) # lags
 hist(stocks60[40:44]) # leads
-```
 
-
-```{r}
 stocks60 %>% colnames()
-```
 
-# Boxplots
-```{r}
 # Morality
 
 png("figs/boxplot_morality.png", width = 8, height=5, units='in', res=300)
@@ -79,11 +52,7 @@ ggplot(stocks60_foundations_long%>% na.omit(), aes(x = variable, y = value))  +
   theme(legend.position="right") + 
   labs(x="Moral Foundations", y = "Foundation Score",colour="Economic Period")
 dev.off()
-```
 
-
-Generate functions for scatterplot, x density, and y density functions.
-```{r Plot Functions}
 
 # SCATTERPLOT
 plot_scatter <- function(input, x_label) {
@@ -110,10 +79,7 @@ plot_ydensity <- function() {
            scale_fill_manual(values = c('#00AFBB','#E7B800')) +
            theme(legend.position = "none")  + 
     labs(x = "") )}
-```
 
-Create scatterplots for morality and all foundations
-```{r Scatterplots}
 width=8
 height=5
 
@@ -173,4 +139,3 @@ ydensity <- plot_ydensity() + coord_flip()
 legend <- get_legend(scatterPlot)
 grid.arrange(xdensity, legend, scatterPlot2, ydensity, ncol=2, nrow=2, widths=c(4, 1.4), heights=c(1.4, 4)) # SANCTITY PLOT           
 dev.off()
-```
