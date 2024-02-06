@@ -1,49 +1,25 @@
----
-title: "MFStocks Analysis"
----
-
-```{r Setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, collapse = FALSE, warning = FALSE, tidy = TRUE)
 options(width=120)
-```
 
-# Read Data
-
-```{r Data, include=FALSE}
 setwd("~/Projects/mfstocks/code_and_data/analysis") # data path
 stocks60 <- read.table("data_60.csv", header=TRUE, stringsAsFactors=TRUE, sep=",", na.strings="NA", dec=".", strip.white=TRUE)  # READ DATA
-```
 
-
-```{r Data, include=FALSE}
 stocks60$dt_60 <- as.POSIXct(stocks60$dt_60, tz="EST") # CONVERT DT TO POSIX
 col60 <- c("season_workday_60", "season_month_60", "tf2_60") 
 stocks60[col60] <- lapply(stocks60[col60], as.factor) # CONVERT CAT VARs TO FACTORs
-```
 
-# Preprocessing
-
-Load packages
-```{r Load packages}
 library(RcmdrMisc)
 library(dplyr) # %>% function
 library(reshape2) # melt() 
 library(lubridate) # date()
-```
 
-Create a morality index, using the sum of the sentiment-weighted probabilities of each of the foundations. 
-```{r Create morality index}
 stocks60$morality = 
   stocks60$care_p_60*stocks60$care_sent_60 + 
   stocks60$fairness_p_60*stocks60$fairness_sent_60 +
   stocks60$loyalty_p_60*stocks60$loyalty_sent_60 +
   stocks60$authority_p_60*stocks60$authority_sent_60 +
   stocks60$sanctity_p_60*stocks60$sanctity_sent_60
-```
 
-
-Take the difference of the stock closing values to see the changes in stock market movement. The variance is quite unstable so we then log the difference to try to stabilize it.  
-```{r Make stationary}
 # Stocks 
 stocks60$stocks_60_diff = stocks60$stocks_60 %>% diff() %>% append(NA, 0) # Difference for moving averages
 stocks60$stocks_60_diff_ln = stocks60$stocks_60 %>% log() %>% diff() %>% append(NA, 0) # Log then difference for variance stabilization
@@ -59,31 +35,20 @@ stocks60$fairness_diff = stocks60$fairness %>% diff() %>% append(NA, 0)
 stocks60$loyalty_diff = stocks60$loyalty %>% diff() %>% append(NA, 0)
 stocks60$authority_diff = stocks60$authority %>% diff() %>% append(NA, 0) 
 stocks60$sanctity_diff = stocks60$sanctity %>% diff() %>% append(NA, 0)
-```
 
-```{r}
 stocks60 %>% colnames()
 
-```
 
-Next, add lags and leads to all the predictors, including the morality index (1), all moral probabilities for each foundation (5), all moral sentiments for each foundation (5), and all sentiment-weighted probabilities for each foundation (5). We started with 25 variables in the stocks data frame. We should end up with 57 variables. 
-```{r Lag and lead predictors}
 # morality
 stocks60$morality_lag = lag(stocks60$morality_diff)
 stocks60$morality_lead = lead(stocks60$morality_diff)
 
 stocks60[paste(foundations, "_lag", sep="")] = lag(stocks60[27:31])
 stocks60[paste(foundations, "_lead", sep="")] = lead(stocks60[27:31])
-```
 
-Now that we have all of our predictor variables ready, we can save the processed data. 
-```{r}
 dir.create("processed_data")
 write.csv(stocks60, "processed_data/stocks60.csv")
-```
 
-Make time series and plot. We can see that the log minimized the variance somewhat, but it is still somewhat non-stationary. Perhaps future analyses can use a GARCH model to further process the data, but for the sake of our analysis, it is ok. 
-```{r Make time series}
 stocks60ts = ts(stocks60) # MAKE TIME SERIES
 plot(stocks60ts[,"stocks_60"]) # PLOT INITIAL DATA
 plot(stocks60ts[,"stocks_60_diff"]) # PLOT DIFFERENCED DATA
@@ -95,12 +60,7 @@ plot(stocks60ts[,"fairness_diff"])
 plot(stocks60ts[,"loyalty_diff"])
 plot(stocks60ts[,"authority_diff"])
 plot(stocks60ts[,"sanctity_diff"])
-```
 
-
-
-Plot ACF and PACF
-```{r Serial Dependencies; ACF & PACF}
 plot(stocks60ts[,"stocks_60"]) # PLOT INITIAL DATA
 
 acf(stocks60$stocks_60, lag.max = NULL, type = c("correlation"), plot = TRUE, na.action = na.pass) # ACF FOR NON-TRANSFORMED DATA
@@ -110,9 +70,7 @@ acf(stocks60$stocks_60_diff_ln, lag.max = NULL, type = c("correlation"), plot = 
 acf(stocks60$stocks_60_diff_ln, lag.max = NULL, type = c("partial"), plot = TRUE, na.action = na.pass) # PACF FOR TRANSFORMED DATA
 
 plot(stocks60ts[,"stocks_60_diff_ln"]) # 
-```
 
-```{r Serial Dependencies; ACF & PACF}
 plot(stocks60ts[,"morality"]) # PLOT INITIAL DATA
 
 acf(stocks60$morality, lag.max = NULL, type = c("correlation"), plot = TRUE, na.action = na.pass) # ACF FOR NON-TRANSFORMED DATA
@@ -122,22 +80,12 @@ acf(stocks60$morality_diff, lag.max = NULL, type = c("correlation"), plot = TRUE
 acf(stocks60$morality_diff, lag.max = NULL, type = c("partial"), plot = TRUE, na.action = na.pass) # PACF FOR TRANSFORMED DATA
 
 plot(stocks60ts[,"morality_diff"]) # 
-```
 
-# Get Decriptives
-
-```{r Descriptive statistics}
 library(pastecs)
 cols <- c("morality","care","fairness","loyalty","authority","sanctity", "stocks_60", "stocks_60_diff","stocks_60_diff_ln")
 stocks60[,cols] %>% 
   stat.desc()
-```
 
-
-# Removing Outliers
-
-Values above Q3 + 1.5xIQR or below Q1 - 1.5xIQR are considered as outliers. Values above Q3 + 3xIQR or below Q1 - 3xIQR are considered as extreme points (or extreme outliers). 
-```{r Outliers}
 library(rstatix)
 outliers <- stocks60 %>% 
   identify_outliers(c(morality))
@@ -147,13 +95,7 @@ stocks60_outrm <-  stocks60 %>% dplyr::filter(!(morality %in% outliers$morality)
 print(paste("Before outlier removal: ", nrow(stocks60))) 
 print(paste("After outlier removal: ", nrow(stocks60_outrm))) 
 print(paste("Difference: ", nrow(stocks60) - nrow(stocks60_outrm)))
-```
 
-
-# Cross correlation
-
-The lag k value returned by ccf(x, y) estimates the correlation between x[t+k] and y[t]. 
-```{r}
 plot_TF = TRUE
 
 lag_max = 5
@@ -170,25 +112,13 @@ ccf(stocks60_outrm$loyalty_diff, stocks60_outrm$stocks_60_diff_ln, na.action = n
 ccf(stocks60_outrm$authority_diff, stocks60_outrm$stocks_60_diff_ln, na.action = na.exclude, lag.max = lag_max, plot= plot_TF, ylab=ylab, main="Stocks & Authority Lags")
 ccf(stocks60_outrm$sanctity_diff, stocks60_outrm$stocks_60_diff_ln, na.action = na.exclude, lag.max = lag_max, plot= plot_TF, ylab=ylab, main="Stocks & Sanctity Lags")
 dev.off()
-```
 
-# Fitting and Evaluating Models
-```{r}
 library(jtools) # summ()
 library(lme4) # lme models
 library(interactions)
-```
 
-Generate models
-
-```{r}
 stocks60_outrm <- stocks60_outrm %>% na.omit()
-```
 
-Of the following cells (lagged predictors, or leading predictors), run ONLY 1.
-
-Lagged predictors
-```{r Lagged predictors}
 # Lag
 ## Linear regression
 model.lm <- 
@@ -214,10 +144,7 @@ model.lme.foundations <-
   lmer(stocks_60_diff_ln ~
          1 + season_intraday_60 + tf2_60*(care_lag + fairness_lag + loyalty_lag + authority_lag + sanctity_lag) + ( 1 + season_intraday_60 | day_count), 
        data = stocks60_outrm, REML = TRUE)
-```
 
-Leading predictors
-```{r Leading predictors}
 # # Lead
 # 
 # ## Linear regression
@@ -244,39 +171,22 @@ Leading predictors
 #   lmer(stocks_60_diff_ln ~  
 #          (1 + season_intraday_60 + tf2_60*(care_lead + fairness_lead + loyalty_lead + authority_lead + sanctity_lead) + ( 1 + season_intraday_60 | day_count)), 
 #        data = stocks60_outrm, REML = TRUE)
-```
 
-
-
-```{r Model Comparisons: morality and foundations}
 anova(model.lm, model.lm.foundations)
 anova(model.lme.null, model.lme, model.lme.foundations)
-```
 
-```{r Model Comparisons: linear and mixed-effects}
 anova(model.lme, model.lm, type="Chisq")
 anova(model.lme.foundations, model.lm.foundations, type="Chisq")
-```
 
-# ANOVA results
-
-```{r ANOVA}
 Anova(model.lm, type="III", test="F")
 Anova(model.lm.foundations, type="III", test="F")
 Anova(model.lme.null, type="III", test="F")
 Anova(model.lme, type="III", test="F")
 Anova(model.lme.foundations, type="III", test="F")
-```
 
-
-```{r Standardized Coefficients}
 summ(model.lme, scale=TRUE, transform.response=TRUE, confint=TRUE, digits=2)
 summ(model.lme.foundations, scale=TRUE, transform.response=TRUE, confint=TRUE, digits=2)
-```
 
-# Plot interaction variables
-
-```{r}
 # define models
 lag_mor <- lmer(stocks_60_diff_ln ~ (1 + season_intraday_60 + tf2_60*morality_lag + (1 + season_intraday_60 | day_count)), 
        data = stocks60_outrm, REML = TRUE)
@@ -308,8 +218,3 @@ ggarrange(t1, lag_m+ rremove("legend"),lag_f1,lag_f2,blank,
           t2,lead_m+ rremove("legend"),lead_f1,lead_f2,legend, 
           ncol=5, nrow=2,widths = c(0.25,1,1,1, 0.5))
 dev.off()
-```
-
-
-
-
